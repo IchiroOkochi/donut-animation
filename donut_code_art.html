@@ -1,0 +1,131 @@
+
+<div style="background:#0a0e1a;border-radius:12px;padding:12px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+<canvas id="donut" style="display:block;border-radius:8px;"></canvas>
+<p style="font-size:11px;color:#3a4a6a;margin:0;font-family:monospace;letter-spacing:1px;">donut.c — shaped as a donut</p>
+</div>
+<script>
+const CODE = `#include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+int main() {
+  float A = 0, B = 0, i, j;
+  int k;
+  float z[1760];
+  char b[1760];
+  printf("\\x1b[2J");
+  for (;;) {
+    memset(b, 32, 1760);
+    memset(z, 0, 7040);
+    for (j = 0; j < 6.28; j += 0.07)
+    for (i = 0; i < 6.28; i += 0.02) {
+      float c = sin(i), d = cos(j), e = sin(A), f = sin(j),
+      g = cos(A), h = d + 2, D = 1 / (c * h * e + f * g + 5),
+      l = cos(i), m = cos(B), n = sin(B),
+      t = c * h * g - f * e;
+      int x = 40 + 30 * D * (l * h * m - t * n);
+      int y = 12 + 15 * D * (l * h * n + t * m);
+      int o = x + 80 * y;
+      int N = 8 * ((f * e - c * d * g) * m - c * d * e - f * g - l * d * n);
+      if (22 > y && y > 0 && x > 0 && 80 > x && D > z[o]) {
+        z[o] = D;
+        b[o] = ".,-~:;=!*#$@"[N > 0 ? N : 0];
+      }
+    }
+    printf("\\x1b[H");
+    for (k = 0; k < 1761; k++)
+      putchar(k % 80 ? b[k] : 10);
+    A += 0.04;
+    B += 0.02;
+    usleep(30000);
+  }
+  return 0;
+}`;
+
+const codeChars = CODE.replace(/\s+/g,' ').trim();
+
+const CW = 6.5, CH = 12;
+const W = 660, H = 500;
+const canvas = document.getElementById('donut');
+canvas.width = W; canvas.height = H;
+const ctx = canvas.getContext('2d');
+ctx.font = `bold 10px monospace`;
+
+const cx = W/2, cy = H/2;
+const R = 165, r = 78;
+
+function charHue(ch) {
+  if ('{}[]()'.includes(ch)) return 0;
+  if (';,'.includes(ch)) return 28;
+  if ('0123456789'.includes(ch)) return 52;
+  if ('+-*/<>=!&|%^~'.includes(ch)) return 125;
+  if ('"\'\\'.includes(ch)) return 185;
+  if ('#'.includes(ch)) return 275;
+  if ('abcdefghijklmnopqrstuvwxyz'.includes(ch.toLowerCase())) return 215;
+  return 210;
+}
+
+const cells = [];
+for (let py = CH/2; py < H; py += CH) {
+  for (let px = CW/2; px < W; px += CW) {
+    const dx = px - cx, dy = py - cy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const tubeOff = dist - R;
+    if (Math.abs(tubeOff) < r) {
+      const theta = Math.atan2(dy, dx);
+      const tubeH = Math.sqrt(r*r - tubeOff*tubeOff);
+      const nx = Math.cos(theta) * (tubeOff/r);
+      const ny = Math.sin(theta) * (tubeOff/r);
+      const nz = tubeH / r;
+      cells.push({ px, py, nx, ny, nz, theta, tubeOff });
+    }
+  }
+}
+
+cells.sort((a, b) => {
+  const ta = (a.theta + Math.PI*2) % (Math.PI*2);
+  const tb = (b.theta + Math.PI*2) % (Math.PI*2);
+  if (Math.abs(ta-tb) > 0.06) return ta - tb;
+  return a.tubeOff - b.tubeOff;
+});
+
+const hslCache = {};
+function getColor(hue, brightness) {
+  const key = hue + ',' + Math.round(brightness * 20);
+  if (hslCache[key]) return hslCache[key];
+  const l = Math.round(10 + brightness * 72);
+  const s = brightness > 0.3 ? 88 : 60;
+  const c = `hsl(${hue},${s}%,${l}%)`;
+  hslCache[key] = c;
+  return c;
+}
+
+let offset = 0, lastDraw = 0, lightAngle = 0;
+
+function draw(ts) {
+  requestAnimationFrame(draw);
+  if (ts - lastDraw < 45) return;
+  lastDraw = ts;
+
+  lightAngle += 0.018;
+  const lx = Math.cos(lightAngle) * 0.8;
+  const ly = -0.45;
+  const lz = Math.sin(lightAngle) * 0.8 + 0.4;
+  const llen = Math.sqrt(lx*lx + ly*ly + lz*lz);
+
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, W, H);
+
+  cells.forEach((cell, i) => {
+    const ch = codeChars[(i + offset) % codeChars.length];
+    const illum = (cell.nx*lx + cell.ny*ly + cell.nz*lz) / llen;
+    const brightness = Math.max(0.04, illum);
+    ctx.fillStyle = getColor(charHue(ch), brightness);
+    ctx.fillText(ch, cell.px - CW/2, cell.py + CH/2 - 1);
+  });
+
+  offset = (offset + 2) % codeChars.length;
+}
+
+requestAnimationFrame(draw);
+</script>
