@@ -1,8 +1,49 @@
+<style>
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: #050915;
+}
 
-<div style="background:#0a0e1a;border-radius:12px;padding:12px 8px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;">
-<canvas id="donut" style="display:block;border-radius:8px;"></canvas>
-<p style="font-size:11px;color:#3a4a6a;margin:0;font-family:monospace;letter-spacing:1px;">donut.c — shaped as a donut</p>
+body {
+  overflow: hidden;
+  font-family: monospace;
+}
+
+.donut-stage {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  padding: clamp(10px, 2vmin, 18px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background:
+    radial-gradient(circle at top, #10182d 0%, #0a0e1a 58%, #050915 100%);
+}
+
+#donut {
+  display: block;
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.35);
+}
+
+#label {
+  margin: 0;
+  color: #4a5f89;
+  font-size: clamp(10px, 1.3vmin, 12px);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+</style>
+
+<div class="donut-stage" id="stage">
+  <canvas id="donut"></canvas>
+  <p id="label">donut.c - shaped as a donut</p>
 </div>
+
 <script>
 const CODE = `#include <math.h>
 #include <stdio.h>
@@ -42,90 +83,162 @@ int main() {
   return 0;
 }`;
 
-const codeChars = CODE.replace(/\s+/g,' ').trim();
+const BASE_OUTER_RADIUS = 243;
+const BASE_CW = 6.5;
+const BASE_CH = 12;
+const BASE_FONT_SIZE = 10;
+const BASE_R = 165;
+const BASE_r = 78;
 
-const CW = 6.5, CH = 12;
-const W = 660, H = 500;
-const canvas = document.getElementById('donut');
-canvas.width = W; canvas.height = H;
-const ctx = canvas.getContext('2d');
-ctx.font = `bold 10px monospace`;
+const codeChars = CODE.replace(/\s+/g, " ").trim();
+const canvas = document.getElementById("donut");
+const ctx = canvas.getContext("2d");
+const stage = document.getElementById("stage");
+const label = document.getElementById("label");
 
-const cx = W/2, cy = H/2;
-const R = 165, r = 78;
+const hslCache = {};
+let cells = [];
+let metrics = {
+  width: 0,
+  height: 0,
+  cw: BASE_CW,
+  ch: BASE_CH,
+  cx: 0,
+  cy: 0,
+  R: BASE_R,
+  r: BASE_r
+};
+
+let offset = 0;
+let lastDraw = 0;
+let lightAngle = 0;
 
 function charHue(ch) {
-  if ('{}[]()'.includes(ch)) return 0;
-  if (';,'.includes(ch)) return 28;
-  if ('0123456789'.includes(ch)) return 52;
-  if ('+-*/<>=!&|%^~'.includes(ch)) return 125;
-  if ('"\'\\'.includes(ch)) return 185;
-  if ('#'.includes(ch)) return 275;
-  if ('abcdefghijklmnopqrstuvwxyz'.includes(ch.toLowerCase())) return 215;
+  if ("{}[]()".includes(ch)) return 0;
+  if (";,".includes(ch)) return 28;
+  if ("0123456789".includes(ch)) return 52;
+  if ("+-*/<>=!&|%^~".includes(ch)) return 125;
+  if ("\"'\\".includes(ch)) return 185;
+  if ("#".includes(ch)) return 275;
+  if ("abcdefghijklmnopqrstuvwxyz".includes(ch.toLowerCase())) return 215;
   return 210;
 }
 
-const cells = [];
-for (let py = CH/2; py < H; py += CH) {
-  for (let px = CW/2; px < W; px += CW) {
-    const dx = px - cx, dy = py - cy;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    const tubeOff = dist - R;
-    if (Math.abs(tubeOff) < r) {
-      const theta = Math.atan2(dy, dx);
-      const tubeH = Math.sqrt(r*r - tubeOff*tubeOff);
-      const nx = Math.cos(theta) * (tubeOff/r);
-      const ny = Math.sin(theta) * (tubeOff/r);
-      const nz = tubeH / r;
-      cells.push({ px, py, nx, ny, nz, theta, tubeOff });
+function getColor(hue, brightness) {
+  const key = hue + "," + Math.round(brightness * 20);
+  if (hslCache[key]) return hslCache[key];
+  const lightness = Math.round(10 + brightness * 72);
+  const saturation = brightness > 0.3 ? 88 : 60;
+  const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  hslCache[key] = color;
+  return color;
+}
+
+function rebuildCells() {
+  const { width, height, cw, ch, cx, cy, R, r } = metrics;
+  const nextCells = [];
+
+  for (let py = ch / 2; py < height; py += ch) {
+    for (let px = cw / 2; px < width; px += cw) {
+      const dx = px - cx;
+      const dy = py - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const tubeOffset = dist - R;
+
+      if (Math.abs(tubeOffset) < r) {
+        const theta = Math.atan2(dy, dx);
+        const tubeHeight = Math.sqrt(Math.max(0, r * r - tubeOffset * tubeOffset));
+        const nx = Math.cos(theta) * (tubeOffset / r);
+        const ny = Math.sin(theta) * (tubeOffset / r);
+        const nz = tubeHeight / r;
+        nextCells.push({ px, py, nx, ny, nz, theta, tubeOffset });
+      }
     }
   }
+
+  nextCells.sort((a, b) => {
+    const ta = (a.theta + Math.PI * 2) % (Math.PI * 2);
+    const tb = (b.theta + Math.PI * 2) % (Math.PI * 2);
+    if (Math.abs(ta - tb) > 0.06) return ta - tb;
+    return a.tubeOffset - b.tubeOffset;
+  });
+
+  cells = nextCells;
 }
 
-cells.sort((a, b) => {
-  const ta = (a.theta + Math.PI*2) % (Math.PI*2);
-  const tb = (b.theta + Math.PI*2) % (Math.PI*2);
-  if (Math.abs(ta-tb) > 0.06) return ta - tb;
-  return a.tubeOff - b.tubeOff;
-});
+function resizeScene() {
+  const styles = getComputedStyle(stage);
+  const paddingX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+  const paddingY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+  const gap = parseFloat(styles.rowGap || styles.gap) || 0;
+  const stageRect = stage.getBoundingClientRect();
+  const labelHeight = label.getBoundingClientRect().height;
 
-const hslCache = {};
-function getColor(hue, brightness) {
-  const key = hue + ',' + Math.round(brightness * 20);
-  if (hslCache[key]) return hslCache[key];
-  const l = Math.round(10 + brightness * 72);
-  const s = brightness > 0.3 ? 88 : 60;
-  const c = `hsl(${hue},${s}%,${l}%)`;
-  hslCache[key] = c;
-  return c;
+  const width = Math.max(260, Math.floor(stageRect.width - paddingX));
+  const height = Math.max(220, Math.floor(stageRect.height - paddingY - labelHeight - gap));
+  const devicePixelRatio = window.devicePixelRatio || 1;
+
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  canvas.width = Math.floor(width * devicePixelRatio);
+  canvas.height = Math.floor(height * devicePixelRatio);
+
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+  const outerRadius = Math.max(90, Math.min(width, height) * 0.48);
+  const scale = outerRadius / BASE_OUTER_RADIUS;
+  const cw = Math.max(4.5, BASE_CW * scale);
+  const ch = Math.max(8, BASE_CH * scale);
+  const fontSize = Math.max(7, BASE_FONT_SIZE * scale);
+  const r = BASE_r * scale;
+  const R = BASE_R * scale;
+
+  ctx.font = `bold ${fontSize}px monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  metrics = {
+    width,
+    height,
+    cw,
+    ch,
+    cx: width / 2,
+    cy: height / 2,
+    R,
+    r
+  };
+
+  rebuildCells();
 }
-
-let offset = 0, lastDraw = 0, lightAngle = 0;
 
 function draw(ts) {
   requestAnimationFrame(draw);
   if (ts - lastDraw < 45) return;
   lastDraw = ts;
 
+  const { width, height, cw, ch } = metrics;
+
   lightAngle += 0.018;
   const lx = Math.cos(lightAngle) * 0.8;
   const ly = -0.45;
   const lz = Math.sin(lightAngle) * 0.8 + 0.4;
-  const llen = Math.sqrt(lx*lx + ly*ly + lz*lz);
+  const lightLength = Math.sqrt(lx * lx + ly * ly + lz * lz);
 
-  ctx.fillStyle = '#0a0e1a';
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#0a0e1a";
+  ctx.fillRect(0, 0, width, height);
 
   cells.forEach((cell, i) => {
-    const ch = codeChars[(i + offset) % codeChars.length];
-    const illum = (cell.nx*lx + cell.ny*ly + cell.nz*lz) / llen;
-    const brightness = Math.max(0.04, illum);
-    ctx.fillStyle = getColor(charHue(ch), brightness);
-    ctx.fillText(ch, cell.px - CW/2, cell.py + CH/2 - 1);
+    const chCode = codeChars[(i + offset) % codeChars.length];
+    const illumination = (cell.nx * lx + cell.ny * ly + cell.nz * lz) / lightLength;
+    const brightness = Math.max(0.04, illumination);
+    ctx.fillStyle = getColor(charHue(chCode), brightness);
+    ctx.fillText(chCode, cell.px, cell.py + ch * 0.08);
   });
 
-  offset = (offset + 2) % codeChars.length;
+  offset = (offset + Math.max(1, Math.round(cw / 4))) % codeChars.length;
 }
 
+resizeScene();
+window.addEventListener("resize", resizeScene);
 requestAnimationFrame(draw);
 </script>
