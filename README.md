@@ -6,9 +6,13 @@ This one turns the legendary `donut.c` into a literal glowing donut made out of 
 
 It is part ASCII art, part browser sketch, part tiny act of programmer nonsense, and that is exactly why it rules.
 
+![Animated demo](assets/donut.gif)
+
+[View the live donut](https://ichirookochi.github.io/donut-animation/)
+
 ## What It Does
 
-`donut_code_art.html` renders a torus-shaped animation on an HTML `<canvas>`, but instead of filling it with pixels or plain characters, it wraps the surface in characters pulled directly from the original `donut.c` source.
+`index.html` renders a torus-shaped animation on an HTML `<canvas>`, but instead of filling it with pixels or plain characters, it wraps the surface in characters pulled directly from the original `donut.c` source.
 
 The result:
 
@@ -27,18 +31,22 @@ Because sometimes the correct technical choice is to make something unnecessary 
 
 ## Files
 
-- `donut_code_art.html` - the entire artwork in one self-contained HTML file
+- `index.html` - the entire artwork in one self-contained HTML file
+- `assets/donut.gif` - a tiny spinning proof that the pastry is alive
 - `README.md` - the ceremonial plaque next to the donut museum exhibit
 
 ## How To Run It
 
 No build tools. No dependencies. No bundler with opinions.
 
-1. Open `donut_code_art.html` in a web browser.
+1. Open `index.html` in a web browser.
 2. Stare at it longer than planned.
 3. Pretend this counts as studying computer graphics.
 
 If your browser is already open, you can also just drag the file into it.
+
+If you just want the instant sugar rush, the live version is here:
+[https://ichirookochi.github.io/donut-animation/](https://ichirookochi.github.io/donut-animation/)
 
 ## Vibe Checklist
 
